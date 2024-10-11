@@ -1,0 +1,5 @@
+# Ignore input and output files
+*.root
+*.lhe
+# Ignore OS generated files
+*.DS_Store

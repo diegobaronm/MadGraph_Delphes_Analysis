@@ -1,0 +1,3 @@
+[submodule "LHE_Converter"]
+	path = LHE_Converter
+	url = https://github.com/M-Eggleston/LHE_NTuples.git

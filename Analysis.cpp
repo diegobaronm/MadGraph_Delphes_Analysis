@@ -75,7 +75,10 @@ void DelphesAnalysis(std::string fileName){
     // 4)
     auto deltaPhiMuons = [](ROOT::VecOps::RVec<TLorentzVector> particles) { return Kinematics::del_phi(particles.at(0).Phi(),particles.at(1).Phi()); };
     // 5) 
-    auto isPtOrdered = [](ROOT::VecOps::RVec<Float_t> pt) { return pt.at(0) > pt.at(1); };
+    auto isPtOrdered = [](ROOT::VecOps::RVec<Float_t> pt) { 
+        if (pt.size() < 2) g_LOG(LogLevel::ERROR, "Function called with less than two particles to compare!");
+        return pt.at(0) > pt.at(1); 
+    };
     // 6)
     auto numberOfHeavyJets = [](ROOT::VecOps::RVec<unsigned int> btagFlagVec) { 
         int numberBJets = 0;
@@ -142,8 +145,11 @@ void DelphesAnalysis(std::string fileName){
         float centrality = abs((lepton_xi - 0.5*dijet_xi)/delta_y);
         return centrality;
     };
-
-                
+    // 11)
+    auto dileptonPt = [](ROOT::VecOps::RVec<TLorentzVector> leptons) { 
+        if (leptons.size() < 2) return 0.0;
+        return (leptons.at(0) + leptons.at(1)).Pt(); 
+    };
 
 
     // Define new columns
@@ -164,12 +170,29 @@ void DelphesAnalysis(std::string fileName){
     node = node.Define("nJetsInGap",nJetsInGap,{"jets_p4"});
     node = node.Define("ptBalance",ptBalance,{"muons_p4","jets_p4"});
     node = node.Define("dilepCentrality",dilepCentrality,{"muons_p4","jets_p4"});
+    node = node.Define("dileptonPt",dileptonPt,{"muons_p4"});
+    
     
     // Filters
     node = node.Filter("Muon_size == 2");
     node = node.Filter("Electron_size == 0");
     node = node.Filter("Jet_size == 2 || Jet_size == 3");
     node = node.Filter("Muon.Charge[0] != Muon.Charge[1]");
+
+    std::vector histograms = {node.Histo1D("MuonisPtOrdered")};
+    histograms.push_back(node.Histo1D({"Muon_1_pt_basic", "Muon_1_pt_basic", 300, 0, 300},"Muon_1_pt"));
+    histograms.push_back(node.Histo1D({"Muon_2_pt_basic", "Muon_2_pt_basic", 300, 0, 300},"Muon_2_pt"));
+    histograms.push_back(node.Histo1D({"Jet_1_pt_basic", "Jet_1_pt_basic", 300, 0, 300},"Jet_1_pt"));
+    histograms.push_back(node.Histo1D({"Jet_2_pt_basic", "Jet_2_pt_basic", 300, 0, 300},"Jet_2_pt"));   
+    histograms.push_back(node.Histo1D({"deltaPhi_muons_basic", "deltaPhi_muons_basic", 64, 0, 3.2},"deltaPhi_muons"));
+    histograms.push_back(node.Histo1D({"deltaRapidity_basic", "deltaRapidity_basic", 100, 0, 10},"deltaRapidity"));
+    histograms.push_back(node.Histo1D({"mjj_basic", "mjj_basic", 500, 0, 5000},"mjj"));
+    histograms.push_back(node.Histo1D({"mll_basic", "mll_basic", 300, 0, 300},"mll"));
+    histograms.push_back(node.Histo1D({"nJetsInGap_basic", "nJetsInGap_basic", 2, 0, 2},"nJetsInGap"));
+    histograms.push_back(node.Histo1D({"ptBalance_basic", "ptBalance_basic", 100, 0, 1},"ptBalance"));
+    histograms.push_back(node.Histo1D({"dilepCentrality_basic", "dilepCentrality_basic", 100, 0, 1},"dilepCentrality"));
+    histograms.push_back(node.Histo1D({"dileptonPt_basic", "dileptonPt_basic", 100, 0, 1000},"dileptonPt"));
+
     node = node.Filter("Bjet_size == 0");
     node = node.Filter("Muon.PT[0] >= 50");
     node = node.Filter("Muon.PT[1] >= 40");
@@ -180,10 +203,10 @@ void DelphesAnalysis(std::string fileName){
     node = node.Filter("mll < 101 && mll > 81");
     node = node.Filter("nJetsInGap == 0");
     node = node.Filter("ptBalance <= 0.15");
+    node = node.Filter("dilepCentrality < 0.5");
 
 
-    // Histograms
-    std::vector histograms = {node.Histo1D("MuonisPtOrdered")};
+    // More Histograms
     histograms.push_back(node.Histo1D("JetisPtOrdered"));
     histograms.push_back(node.Histo1D("Muon_size"));
     histograms.push_back(node.Histo1D("Jet_size"));
@@ -192,13 +215,14 @@ void DelphesAnalysis(std::string fileName){
     histograms.push_back(node.Histo1D({"Muon_2_pt", "Muon_2_pt", 300, 0, 300},"Muon_2_pt"));
     histograms.push_back(node.Histo1D({"Jet_1_pt", "Jet_1_pt", 300, 0, 300},"Jet_1_pt"));
     histograms.push_back(node.Histo1D({"Jet_2_pt", "Jet_2_pt", 300, 0, 300},"Jet_2_pt"));   
-    histograms.push_back(node.Histo1D({"deltaPhi_muons", "deltaPhi_muons", 64, 0, 32},"deltaPhi_muons"));
+    histograms.push_back(node.Histo1D({"deltaPhi_muons", "deltaPhi_muons", 64, 0, 3.2},"deltaPhi_muons"));
     histograms.push_back(node.Histo1D({"deltaRapidity", "deltaRapidity", 100, 0, 10},"deltaRapidity"));
     histograms.push_back(node.Histo1D({"mjj", "mjj", 500, 0, 5000},"mjj"));
     histograms.push_back(node.Histo1D({"mll", "mll", 300, 0, 300},"mll"));
     histograms.push_back(node.Histo1D({"nJetsInGap", "nJetsInGap", 2, 0, 2},"nJetsInGap"));
     histograms.push_back(node.Histo1D({"ptBalance", "ptBalance", 100, 0, 1},"ptBalance"));
     histograms.push_back(node.Histo1D({"dilepCentrality", "dilepCentrality", 100, 0, 1},"dilepCentrality"));
+    histograms.push_back(node.Histo1D({"dileptonPt", "dileptonPt", 100, 0, 1000},"dileptonPt"));
 
 
     // Save histograms
@@ -216,6 +240,7 @@ void DelphesAnalysis(std::string fileName){
 
 void Analysis(){
     DelphesAnalysis("full_diagrams_delphes.root");
+    DelphesAnalysis("origina_diagrams_delphes.root");
 }
 
 /******************************************************************************
