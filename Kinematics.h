@@ -97,7 +97,7 @@ double del_phi(double phi_1, double phi_2){
  * @param particles A list of TLorentzVector objects pointers
  * 
  */
-double Mass(const std::vector<const TLorentzVector*>& particles)
+double Mass(const std::vector<TLorentzVector>& particles)
 {
     double sum{0};
     for (const auto& particle1 : particles)
@@ -105,7 +105,7 @@ double Mass(const std::vector<const TLorentzVector*>& particles)
         for (const auto& particle2 : particles)
         {
             if (particle1 == particle2) { continue;} // Skip the same particle
-            sum += particle1->Dot(*particle2);
+            sum += particle1.Dot(particle2);
         }
     }
     return sqrt(sum);
@@ -259,6 +259,132 @@ Region getRegion(double centrality, int nJetsInGap){
     else if ((centrality>=0.5 && centrality<=1) && nJetsInGap==1){region = Region::CRb;}
     else if ((centrality>=0.5 && centrality<=1) && nJetsInGap==0){region = Region::CRc;}
     return region;
+}
+
+/**
+ * @brief Enum to define the different topologies of the tau tau system.
+ * 
+ */
+enum TauTauTopology {
+    INSIDE = 1,
+    OUTSIDE_LEP = 2,
+    OUTSIDE_ELEC = 2,
+    OUTSIDE_TAU = 3,
+    OUTSIDE_MUON = 3,
+    NOT_VALID = 4,
+};
+
+/**
+ * @brief Get the tau-tau topolgy of the event. This is constructed from the angles between the MET, Tau and Lepton.
+ * @param deltaPhiMETLep
+ * @param deltaPhiMETTau
+ * @param deltaPhiTauLep
+ */
+int getTauTauTopology(double deltaPhiMETLep, double deltaPhiMETTau, double deltaPhiTauLep){
+    
+    bool inside = abs(deltaPhiTauLep - (deltaPhiMETLep + deltaPhiMETTau))< 0.00001; //ANGLE BEING USED pi/2 AND 2.0943
+    if (inside) {return TauTauTopology::INSIDE;}
+
+    bool outside_lep = (deltaPhiMETLep < deltaPhiMETTau) && (abs(deltaPhiTauLep - (deltaPhiMETLep+deltaPhiMETTau)) > 0.00001) && (cos(deltaPhiMETLep) > 0);
+    if (outside_lep) {return TauTauTopology::OUTSIDE_LEP;}
+
+    bool outside_tau = (deltaPhiMETLep > deltaPhiMETTau) && (abs(deltaPhiTauLep - (deltaPhiMETLep+deltaPhiMETTau)) > 0.00001) && (cos(deltaPhiMETTau) > 0);
+    if (outside_tau) {return TauTauTopology::OUTSIDE_TAU;}
+
+    return TauTauTopology::NOT_VALID;
+}
+
+/**
+ * @brief Get the tau neutrino particle.
+ * @param topology
+ * @param MET
+ * @param Tau
+ * @param Lepton
+ */
+TLorentzVector getTauNeutrino(int topology,const TLorentzVector& MET, const TLorentzVector& Tau, const TLorentzVector& Lepton){
+    TLorentzVector neutrino{};
+    if (topology == TauTauTopology::NOT_VALID){
+        g_LOG(LogLevel::ERROR, "Invalid topology for tau tau system.");
+        exit(1);
+    } else if (topology == TauTauTopology::INSIDE){
+        double cot_lep=1.0/tan(Lepton.Phi());
+        double pt_tau_nu=(MET.Pt()*cos(MET.Phi())-MET.Pt()*sin(MET.Phi())*cot_lep)/(cos(Tau.Phi())-sin(Tau.Phi())*cot_lep);
+        neutrino.SetPtEtaPhiM(pt_tau_nu, Tau.Eta(), Tau.Phi(), 0.0);
+    } else if (topology == TauTauTopology::OUTSIDE_TAU) {
+        double neutrino_pt = MET.Pt()*cos(del_phi(Tau.Phi(),MET.Phi()));
+        neutrino.SetPtEtaPhiM(neutrino_pt, Tau.Eta(), Tau.Phi(), 0.0);
+    }
+
+    return neutrino;
+}
+
+/**
+ * @brief Get the lep neutrino particle.
+ * @param topology
+ * @param MET
+ * @param Tau
+ * @param Lepton
+ */
+TLorentzVector getLepNeutrino(int topology,const TLorentzVector& MET, const TLorentzVector& Tau, const TLorentzVector& Lepton){
+    TLorentzVector neutrino{};
+    if (topology == TauTauTopology::NOT_VALID){
+        g_LOG(LogLevel::ERROR, "Invalid topology for tau tau system.");
+        exit(1);
+    } else if (topology == TauTauTopology::INSIDE){
+        double cot_tau=1.0/tan(Tau.Phi());
+        double pt_lep_nu=(MET.Pt()*cos(MET.Phi())-MET.Pt()*sin(MET.Phi())*cot_tau)/(cos(Lepton.Phi())-sin(Lepton.Phi())*cot_tau);
+        neutrino.SetPtEtaPhiM(pt_lep_nu, Lepton.Eta(), Lepton.Phi(), 0.0);
+    } else if (topology == TauTauTopology::OUTSIDE_LEP){
+        double neutrino_pt = MET.Pt()*cos(del_phi(Lepton.Phi(),MET.Phi()));
+        neutrino.SetPtEtaPhiM(neutrino_pt, Lepton.Eta(), Lepton.Phi(), 0.0);
+    }
+
+    return neutrino;
+}
+
+/**
+ * @brief Get the reconstructed mass of the event.
+ * @param topology
+ * @param Tau
+ * @param Lepton
+ * @param TauNu
+ * @param LeptonNu
+ */
+double getRecoMass(int topology, const TLorentzVector& Tau, const TLorentzVector& Lepton, const TLorentzVector& TauNu, const TLorentzVector& LeptonNu){
+    double mass{0};
+    if (topology == TauTauTopology::INSIDE){
+        mass = Mass(std::vector{Tau,Lepton,TauNu,LeptonNu});
+    } else if (topology == TauTauTopology::OUTSIDE_LEP || topology == TauTauTopology::OUTSIDE_TAU){
+        mass = 5 + Mass(std::vector{Tau,Lepton,TauNu,LeptonNu});
+    } else {
+        g_LOG(LogLevel::ERROR, "Invalid topology for tau tau system.");
+        exit(1);
+    }
+    return mass;
+}
+
+/**
+ * @brief Get Omega.
+ * @param topology
+ * @param deltaPhiMETLep
+ * @param deltaPhiMETTau
+ * @param deltaPhiTauLep
+ */
+float getOmega(int topology, double deltaPhiMETLep, double deltaPhiMETTau, double deltaPhiTauLep){
+    float omega{0};
+    if (topology == TauTauTopology::INSIDE && (deltaPhiMETLep < deltaPhiMETTau)) {
+      omega = 1.0 - (deltaPhiMETLep)/(deltaPhiTauLep);
+    } else if (topology == TauTauTopology::INSIDE && (deltaPhiMETLep > deltaPhiMETTau)) {
+      omega = (deltaPhiMETTau)/(deltaPhiTauLep);
+    } else if (topology == TauTauTopology::OUTSIDE_LEP) {
+      omega = 1.0 + (deltaPhiMETLep)/(deltaPhiTauLep);
+    } else if (topology == TauTauTopology::OUTSIDE_TAU) {
+      omega = -1.0 * (deltaPhiMETTau)/(deltaPhiTauLep);
+    } else {
+      g_LOG(LogLevel::ERROR, "Invalid topology for tau tau system.");
+      exit(1);
+    }
+    return omega;
 }
 
 } // namespace Kinematics
